@@ -1,16 +1,17 @@
 from flask import Flask, request, jsonify, make_response
 from flask_sqlalchemy import SQLAlchemy
+from flask_socketio import SocketIO, send
 import uuid
-from werkzeug.security import generate_password_hash, check_password_hash
+from flask_bcrypt import Bcrypt
 import jwt
-import datetime
 from functools import wraps
+import datetime
 
 app = Flask(__name__)
-
+bcrypt = Bcrypt(app)
 app.config['SECRET_KEY'] = 'thisissecret'
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////mnt/c/Users/antho/Documents/api_example/todo.db'
-
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
+socket = SocketIO(app)
 db = SQLAlchemy(app)
 
 class User(db.Model):
@@ -25,8 +26,8 @@ def token_required(f):
 	def decorated(*args, **kwargs):
 		token = None
 
-	if 'x-access-token' in request.headers:
-		token = request.headers['x-access-token']
+		if 'x-access-token' in request.headers:
+			token = request.headers['x-access-token']
 
 		if not token:
 			return jsonify({'message' : 'Token is missing!'}), 401
@@ -42,25 +43,21 @@ def token_required(f):
 	return decorated
 
 @app.route('/user', methods=['GET'])
-@token_required
-def get_all_users(current_user):
+def get_all_users():
 
-		if not current_user.admin:
-			return jsonify({'message' : 'Cannot perform that function!'})
+	users = User.query.all()
 
-		users = User.query.all()
+	output = []
 
-		output = []
+	for user in users:
+		user_data = {}
+		user_data['public_id'] = user.public_id
+		user_data['name'] = user.name
+		user_data['password'] = user.password
+		user_data['admin'] = user.admin
+		output.append(user_data)
 
-		for user in users:
-			user_data = {}
-			user_data['public_id'] = user.public_id
-			user_data['name'] = user.name
-			user_data['password'] = user.password
-			user_data['admin'] = user.admin
-			output.append(user_data)
-
-			return jsonify({'users' : output})
+	return jsonify({'users' : output})
 
 @app.route('/user/<public_id>', methods=['GET'])
 @token_required
@@ -83,10 +80,7 @@ def get_one_user(current_user, public_id):
 	return jsonify({'user' : user_data})
 
 @app.route('/user/<public_id>', methods=['PUT'])
-@token_required
-def promote_user(current_user, public_id):
-	if not current_user.admin:
-		return jsonify({'message' : 'Cannot perform that function!'})
+def promote_user(public_id):
 
 	user = User.query.filter_by(public_id=public_id).first()
 
@@ -99,13 +93,10 @@ def promote_user(current_user, public_id):
 	return jsonify({'message' : 'The user has been promoted!'})
 
 @app.route('/user', methods=['POST'])
-def create_user(current_user):
-	if not current_user.admin:
-		return jsonify({'message' : 'Cannot perform that function!'})
-
+def create_user():
 	data = request.get_json()
 
-	hashed_password = generate_password_hash(data['password'], method='sha256')
+	hashed_password = bcrypt.generate_password_hash(data['password'])
 
 	new_user = User(public_id=str(uuid.uuid4()), name=data['name'], password=hashed_password, admin=False)
 	db.session.add(new_user)
@@ -125,12 +116,18 @@ def login():
 	if not user:
 		return make_response('Could not verify', 401, {'WWW-Authenticate' : 'Basic realm="Login required!"'})
 
-	if check_password_hash(user.password, auth.password):
+
+	if bcrypt.check_password_hash(user.password, auth.password):
 		token = jwt.encode({'public_id' : user.public_id, 'exp' : datetime.datetime.utcnow() + datetime.timedelta(minutes=30)}, app.config['SECRET_KEY'])
 
 		return jsonify({'token' : token.decode('UTF-8')})
 
 	return make_response('Could not verify', 401, {'WWW-Authenticate' : 'Basic realm="Login required!"'})
+
+@socket.on('Message')
+def handleMsg(msg):
+	print("Message to send: " + msg)
+	send(msg, broadcast=True)
 
 if __name__ == '__main__':
 	app.run(debug=True)
