@@ -6,6 +6,7 @@ from flask_bcrypt import Bcrypt
 import jwt
 from functools import wraps
 import datetime
+from gpiozero import LED, Button
 
 app = Flask(__name__)
 bcrypt = Bcrypt(app)
@@ -13,6 +14,9 @@ app.config['SECRET_KEY'] = 'thisissecret'
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
 socket = SocketIO(app)
 db = SQLAlchemy(app)
+
+led = LED(26)
+button = Button(12)
 
 class User(db.Model):
 	id = db.Column(db.Integer, primary_key=True)
@@ -124,6 +128,19 @@ def login():
 
 	return make_response('Could not verify', 401, {'WWW-Authenticate' : 'Basic realm="Login required!"'})
 
+@app.route('/status', methods=['GET'])
+@token_required
+def update():
+	handleMsg(button.value)
+
+	return jasonify({'Buttonstate' : bstate})
+
+@app.route('/LED', methods=['PUT'])
+@token_required
+def switchLED():
+	led.toggle()
+	return jasonify({'LEDState' : led.value})
+
 @socket.on('Message')
 def handleMsg(msg):
 	print("Message to send: " + msg)
@@ -131,3 +148,4 @@ def handleMsg(msg):
 
 if __name__ == '__main__':
 	app.run(debug=True)
+	socket.run(app)
