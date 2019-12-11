@@ -140,7 +140,6 @@ def update():
 def switchLED():
 	led.toggle()
 	return jasonify({'LEDState' : led.value})
-
 @socket.on('Message')
 def handleMsg(msg):
 	print("Message to send: " + msg)
