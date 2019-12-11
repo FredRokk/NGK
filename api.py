@@ -6,7 +6,7 @@ from flask_bcrypt import Bcrypt
 import jwt
 from functools import wraps
 import datetime
-from gpiozero import LED, Button
+# from gpiozero import LED, Button
 
 app = Flask(__name__)
 bcrypt = Bcrypt(app)
@@ -15,8 +15,8 @@ app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///users.db'
 socket = SocketIO(app)
 db = SQLAlchemy(app)
 
-led = LED(26)
-button = Button(12)
+# led = LED(26)
+# button = Button(12)
 
 class User(db.Model):
 	id = db.Column(db.Integer, primary_key=True)
